@@ -9,12 +9,12 @@ import asyncio
 import itertools
 from . import sync, util
 
+
 async def get_resource(url) -> bytes:
     async with aiohttp.ClientSession() as session:
         async with session as conn:
             async with conn.request('GET', url) as request:
                 return await request.content.read()
-
 
 
 async def fetch_soundcloud_client_id():
@@ -23,8 +23,9 @@ async def fetch_soundcloud_client_id():
     script_urls = util.find_script_urls(page_text.decode())
     results = await asyncio.gather(*[get_resource(u) for u in script_urls])
     script_text = "".join([r.decode() for r in results])
-    #print(script_text)
+    # print(script_text)
     return util.find_client_id(script_text)
+
 
 __all__ = [
     "Track",
@@ -32,8 +33,10 @@ __all__ = [
     "SoundcloudAPI"
 ]
 
+
 def eprint(*values, **kwargs):
     print(*values, file=sys.stderr, **kwargs)
+
 
 async def get_obj_from(url):
     try:
@@ -43,9 +46,7 @@ async def get_obj_from(url):
         return False
 
 
-
-
-async def embed_artwork(audio:mutagen.File, artwork_url):
+async def embed_artwork(audio: mutagen.File, artwork_url):
     if artwork_url:
         audio.tags.add(
             mutagen.id3.APIC(
@@ -57,7 +58,6 @@ async def embed_artwork(audio:mutagen.File, artwork_url):
             )
         )
     return audio
-
 
 
 class SoundcloudAPI(sync.SoundcloudAPI):
@@ -86,6 +86,18 @@ class SoundcloudAPI(sync.SoundcloudAPI):
             await playlist.clean_attributes()
             return playlist
 
+    async def search(self, q):
+        if not self.client_id:
+            await self.get_credentials()
+        full_url = "https://api-v2.soundcloud.com/search/tracks?q={q}&client_id={client_id}&app_version=1499347238".format(
+            q=q.replace(" ", "%20"),
+            client_id=self.client_id
+        )
+        collections = await get_obj_from(full_url)
+        return [
+            Track(obj=obj, client=self) for obj in collections['collection'] if obj['kind'] == 'track'
+        ]
+
     async def get_tracks(self, *track_ids):
         if not self.client_id:
             await self.get_credentials()
@@ -100,8 +112,6 @@ class SoundcloudAPI(sync.SoundcloudAPI):
         tracks = list(itertools.chain.from_iterable(response))
         tracks = sorted(tracks, key=lambda x: track_ids.index(x['id']))
         return tracks
-
-
 
 
 class Track(sync.Track):
@@ -147,9 +157,7 @@ class Track(sync.Track):
         return track_dict
 
 
-
 class Playlist(sync.Playlist):
-
     RESOLVE_THRESHOLD = 100
 
     async def clean_attributes(self):
@@ -158,12 +166,12 @@ class Playlist(sync.Playlist):
         self.ready = True
 
         track_objects = []  # type: [Track] # all completed track objects
-        incomplete_track_ids = []   # tracks that do not have metadata
+        incomplete_track_ids = []  # tracks that do not have metadata
 
-        while self.tracks and 'title' in self.tracks[0]:       # remove completed track objects
+        while self.tracks and 'title' in self.tracks[0]:  # remove completed track objects
             track_objects.append(Track(obj=self.tracks.pop(0), client=self.client))
 
-        while self.tracks:   # while built tracks are less than all tracks
+        while self.tracks:  # while built tracks are less than all tracks
             incomplete_track_ids.append(self.tracks.pop(0)['id'])
             if len(incomplete_track_ids) == self.RESOLVE_THRESHOLD or not self.tracks:
                 new_tracks = await self.client.get_tracks(*incomplete_track_ids)
@@ -173,7 +181,6 @@ class Playlist(sync.Playlist):
         for track in track_objects:
             if track not in self.tracks:
                 self.tracks.append(track)
-
 
     def __len__(self):
         return int(self.track_count)
